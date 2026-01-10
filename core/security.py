@@ -1,0 +1,16 @@
+from passlib.context import CryptContext
+
+pwd_context = CryptContext(
+    schemes=["bcrypt"],
+    deprecated="auto"
+)
+
+def hash_password(password: str) -> str:
+    # Truncate to 72 bytes safely
+    max_bytes = 72
+    encoded = password.encode('utf-8')
+    if len(encoded) > max_bytes:
+        encoded = encoded[:max_bytes]
+        # decode back safely, ignoring incomplete characters
+        password = encoded.decode('utf-8', errors='ignore')
+    return pwd_context.hash(password)

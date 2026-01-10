@@ -1,0 +1,5 @@
+#ignore environment variable
+.env
+env
+# database ignore
+database.db

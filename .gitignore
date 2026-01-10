@@ -8,4 +8,4 @@ env
 # database ignore
 database.db
 #pychache
-_pycache_
+__pycache__

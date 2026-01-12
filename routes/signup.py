@@ -1,9 +1,5 @@
-<<<<<<< HEAD
 from fastapi import APIRouter,HTTPException
 from sqlmodel import Session,select
-=======
-from fastapi import APIRouter
->>>>>>> 98e33ae8035ae9016a027b48a16ca357531e98e4
 from core.security import hash_password
 from schemas.user import UserCreate
 from db.models import profile

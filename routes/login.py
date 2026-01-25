@@ -6,6 +6,7 @@ from db.models import profile
 from db.database import engine
 from core.jwt import create_access_token
 from core.jwt import decode_access_token
+from core.security import verify_password
 router=APIRouter()
 
 @router.post('/login')
@@ -34,7 +35,7 @@ def login(data:user|None=None):
             raise HTTPException(status_code=404,detail="user not found")
         if db_user.email != data.email:
             raise HTTPException(status_code=404,detail="Wrong Credentials")
-        if not bcrypt.checkpw(data.password.encode('utf-8'),db_user.password.encode('utf-8')):
+        if not verify_password(data.password, db_user.password):
             raise HTTPException(status_code=404,detail="Wrong Credentials")
         token=create_access_token({'username':db_user.username,'email':db_user.email})
         return {"msg":"User LOGGED IN Sucessfully","Token":token}    

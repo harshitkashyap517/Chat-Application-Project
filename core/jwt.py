@@ -34,6 +34,7 @@ def decode_access_token(token=Depends(oauth_scheme)):
     """
     Verify & decode JWT token
     """
+    
     try:
         payload = jwt.decode(
             token,

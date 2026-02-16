@@ -1,12 +1,28 @@
 from django.forms import ModelForm
-from .models import Profile 
 from django import forms
+from django.contrib.auth.models import User
+from .models import Profile
+
 class ProfileForm(ModelForm):
     class Meta:
         model = Profile
-        exclude = ['user']
+        fields = ['profile_picture', 'displayname', 'info' ]
         widgets = {
-                'image':forms.FileInput(),
-                'displayname':forms.TextInput(attrs={'placeholder':'Add display name'}),
-                'info':forms.Textarea(attrs={'placeholder':'Add information','rows':3})
-        }     
+            'profile_picture': forms.FileInput(),
+            'displayname' : forms.TextInput(attrs={'placeholder': 'Add display name'}),
+            'info' : forms.Textarea(attrs={'rows':3, 'placeholder': 'Add information'})
+        }
+        
+        
+class EmailForm(ModelForm):
+    email = forms.EmailField(required=True)
+
+    class Meta:
+        model = User
+        fields = ['email']
+
+
+class UsernameForm(ModelForm):
+    class Meta:
+        model = User
+        fields = ['username']

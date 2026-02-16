@@ -6,6 +6,7 @@ class Profile(models.Model):
     profile_picture = models.ImageField(upload_to='profile_pictures/', null=True, blank=True)
     displayname=models.CharField(max_length=255, null=True, blank=True) 
     info=models.TextField(null=True, blank=True)
+    
     def __str__(self):
         return self.user.username
 
@@ -21,4 +22,4 @@ class Profile(models.Model):
         else:
             return static('images/avatar.svg')
 
-# Create your models here.
+

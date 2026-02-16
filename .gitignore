@@ -1,0 +1,8 @@
+
+#ignore environment variable
+.env
+env
+# database ignore
+database.db
+#pychache
+__pycache__

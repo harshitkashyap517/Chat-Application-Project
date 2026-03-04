@@ -1,11 +1,16 @@
+
 from django.shortcuts import render,redirect,get_object_or_404
 from django.urls import reverse
+from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.views import APIView
 from django.contrib.auth.decorators import login_required
+from rest_framework import viewsets
+from .serializer import userRegister, userdataSerializer
 from django.contrib import messages
 from allauth.account.models import EmailAddress
-from .forms import ProfileForm
 from .models import Profile
-from .forms import EmailForm,UsernameForm
 from .models import User
 # Create your views here.
 def profile(request,username=None):   
@@ -18,28 +23,12 @@ def profile(request,username=None):
             return redirect('account_login')
     return render(request, "a_users/profile.html", {"profile": profile})
 
-@login_required
-def edit_profile_view(request):
-    
-     form = ProfileForm(instance=request.user.profile)  
-    
-     if request.method == 'POST':
-        form = ProfileForm(request.POST, request.FILES, instance=request.user.profile)
-        if form.is_valid():
-            form.save()
-            return redirect('profile')
-    
-     if request.path == reverse('onboarding_profile'):
-        return render(request, 'a_users/profile_edit.html', { 'form':form, 'onboarding': True})
-      
-     return render(request, 'a_users/profile_edit.html', { 'form':form,})
 
 @login_required
 def profile_settings(request):
     return render(request, 'a_users/profile_settings.html')
 
-@login_required
-def email_changer(request):
+
     if request.htmx:
         form = EmailForm(instance=request.user)
         return render(request, 'partials/email_form.html', {'form': form})
@@ -68,3 +57,37 @@ def email_changer(request):
         else:
             EmailAddress.objects.create(user=user, email=email, primary=True, verified=False)
         return redirect('profile_settings')
+    
+
+class userViewSet(viewsets.ModelViewSet):
+    queryset = User.objects.all()
+    serializer_class = userdataSerializer
+
+class userRegisterAPIView(APIView):
+
+    def post(self, request):
+        serializer = userRegister(data=request.data)
+        print(request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=201)
+        return Response(serializer.errors, status=400)
+    
+class userLoginAPIView(APIView):
+
+   def post(self, request):
+        data=request.data
+        email=data.get('email')
+        Password=data.get('password')
+        user=User.objects.filter(email=email).first()
+        if user and user.check_password(Password):
+            token=RefreshToken.for_user(user)
+            return Response({"token":str(token.access_token),"refreshtoken":str(token), "status": 200})
+        return Response({"message":"Invalid credentials"}, status=400)
+   
+
+class ProfileView(APIView):
+    permission_classes=[IsAuthenticated]
+    def get(self, request):
+        serializer = userdataSerializer(request.user)
+        return Response(serializer.data)

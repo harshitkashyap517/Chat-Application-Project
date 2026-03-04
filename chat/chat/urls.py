@@ -20,12 +20,14 @@ from django.urls import include
 from home.views import home
 from django.conf import settings
 from django.conf.urls.static import static
+from users.views import profile
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('', home, name='home'),
-    path('profile/',include('users.urls') , name='profile'),
-    path('accounts/',include('allauth.urls'))
+    path('', include('rtchat.urls')),
+    path('profile/',include('users.urls')),
+    path('accounts/',include('allauth.urls')),
+    path('@<username>/', profile, name="profile"),
 
 ]
 

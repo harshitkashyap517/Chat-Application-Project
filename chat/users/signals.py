@@ -21,3 +21,4 @@ def create_user_profile(sender, instance, created, **kwargs):
 @receiver(pre_save, sender=User)
 def save_user_profile(sender, instance, **kwargs):
     instance.username = instance.username.lower()
+

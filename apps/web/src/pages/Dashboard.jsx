@@ -1,106 +1,294 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Helmet } from "react-helmet";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext.jsx";
 import { useToast } from "@/hooks/use-toast";
-import {
-  MessageCircle,
-  Search,
-  Users,
-  LogOut,
-  ChevronDown,
-} from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+
+import { MessageCircle, Search, LogOut, Users, User } from "lucide-react";
+
 import UserListItem from "@/components/UserListItem.jsx";
 import ChatHeader from "@/components/ChatHeader.jsx";
 import MessageArea from "@/components/MessageArea.jsx";
 import MessageInput from "@/components/MessageInput.jsx";
 
 const Dashboard = () => {
+
   const { currentUser, logout } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
 
+  const socketRef = useRef(null);
+
   const [users, setUsers] = useState([]);
-  const [loadingUsers, setLoadingUsers] = useState(true);
+  const [chatrooms, setChatrooms] = useState([]);
+
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedUser, setSelectedUser] = useState(null);
-  const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
+  const [currentChatroom, setCurrentChatroom] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [onlineCount, setOnlineCount] = useState(0);
 
-  // ✅ Get token from localStorage
+  const [showProfileModal, setShowProfileModal] = useState(false);
+
+  const [profileData, setProfileData] = useState({
+    username: currentUser?.username || "",
+    email: currentUser?.email || "",
+  });
+
   const token = localStorage.getItem("access");
 
-  // ================= FETCH USERS =================
+  // ================= USERS SEARCH =================
+
   useEffect(() => {
+
     const fetchUsers = async () => {
-      if (!currentUser || !token) return;
 
       try {
-        setLoadingUsers(true);
 
-        const response = await fetch(
-          "http://127.0.0.1:8000/profile/api/user/",
+        const res = await fetch(
+          `http://127.0.0.1:8000/search/?q=${searchQuery}`,
           {
             headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${token}`, // ✅ correct
+              Authorization: `Bearer ${token}`,
             },
           }
         );
 
-        if (!response.ok) {
-          throw new Error("Failed to fetch users");
-        }
-
-        const data = await response.json();
-
-        // If API returns single object, convert to array
-        const userList = Array.isArray(data) ? data : [data];
-
-        const filtered = userList.filter(
-          (user) => user.id !== currentUser.id
-        );
-
+        const data = await res.json();
+        const filtered = data.filter((u) => u.id !== currentUser.id);
         setUsers(filtered);
-      } catch (error) {
-        console.error("User fetch error:", error);
+
+      } catch {
+
         toast({
           title: "Error",
-          description: "Failed to load users.",
+          description: "Failed to load users",
           variant: "destructive",
         });
-      } finally {
-        setLoadingUsers(false);
+
       }
+
     };
 
-    fetchUsers();
-  }, [currentUser, token, toast]);
+    if (searchQuery) fetchUsers();
+
+  }, [searchQuery]);
+
+  // ================= FETCH CHATROOMS =================
+
+  useEffect(() => {
+
+    const fetchChatrooms = async () => {
+
+      try {
+
+        const res = await fetch(
+          "http://127.0.0.1:8000/chatrooms/",
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
+
+        const data = await res.json();
+        setChatrooms(data);
+
+      } catch (err) {
+
+        console.log("Chatroom fetch error", err);
+
+      }
+
+    };
+
+    fetchChatrooms();
+
+  }, []);
+
+  // ================= START CHAT =================
+
+  const startChat = async (user) => {
+
+    try {
+
+      setSelectedUser(user);
+      setMessages([]);
+
+      const res = await fetch(
+        `http://127.0.0.1:8000/chat/${user.username}/`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      const data = await res.json();
+      setCurrentChatroom(data.chatroom_name);
+
+      const msgRes = await fetch(
+        `http://127.0.0.1:8000/messages/${data.chatroom_name}/`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      const msgData = await msgRes.json();
+      setMessages(msgData.messages || []);
+
+    } catch (error) {
+
+      console.error("Chat load error", error);
+
+    }
+
+  };
+
+  // ================= MOVE CHATROOM TO TOP =================
+
+  const moveChatToTop = (username, chatroomName) => {
+
+    setChatrooms((prev) => {
+
+      const existing = prev.find((c) => c.chatroom_name === chatroomName);
+
+      if (existing) {
+        const others = prev.filter((c) => c.chatroom_name !== chatroomName);
+        return [existing, ...others];
+      }
+
+      return [
+        {
+          username: username,
+          chatroom_name: chatroomName,
+        },
+        ...prev,
+      ];
+
+    });
+
+  };
+
+  // ================= WEBSOCKET =================
+
+  useEffect(() => {
+
+    if (!currentChatroom) return;
+
+    if (socketRef.current) {
+      socketRef.current.close();
+    }
+
+    const ws = new WebSocket(
+      `ws://127.0.0.1:8000/ws/chatroom/${currentChatroom}/?token=${token}`
+    );
+
+    socketRef.current = ws;
+
+    ws.onmessage = (event) => {
+
+      const data = JSON.parse(event.data);
+
+      if (data.online_count !== undefined) {
+        setOnlineCount(data.online_count);
+        return;
+      }
+
+      if (!data.body) return;
+
+      const newMessage = {
+        body: data.body,
+        author: data.author,
+        created_at: new Date().toISOString(),
+      };
+
+      setMessages((prev) => [...prev, newMessage]);
+
+      moveChatToTop(data.author, currentChatroom);
+    };
+
+    return () => ws.close();
+
+  }, [currentChatroom]);
+
+  // ================= SEND MESSAGE =================
+
+  const sendMessage = (message) => {
+
+    if (!socketRef.current || socketRef.current.readyState !== 1) return;
+
+    socketRef.current.send(
+      JSON.stringify({
+        body: message,
+      })
+    );
+
+    const newMessage = {
+      body: message,
+      author: currentUser.username,
+      created_at: new Date().toISOString(),
+    };
+
+    setMessages((prev) => [...prev, newMessage]);
+
+    moveChatToTop(selectedUser.username, currentChatroom);
+
+  };
+
+  // ================= UPDATE PROFILE =================
+
+  const updateProfile = async () => {
+
+    try {
+
+      const res = await fetch("http://127.0.0.1:8000/updated_users/", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(profileData),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) throw new Error();
+
+      toast({
+        title: "Profile Updated",
+        description: "Profile updated successfully",
+      });
+
+      setProfileData({
+        username: data.username,
+        email: data.email,
+      });
+
+      setShowProfileModal(false);
+
+    } catch {
+
+      toast({
+        title: "Error",
+        description: "Profile update failed",
+        variant: "destructive",
+      });
+
+    }
+
+  };
 
   // ================= LOGOUT =================
+
   const handleLogout = () => {
+
     logout();
     navigate("/");
+
   };
-
-  // ================= SEARCH FILTER =================
-  const filteredUsers = users.filter((user) => {
-    const searchLower = searchQuery.toLowerCase();
-    return (
-      (user.username && user.username.toLowerCase().includes(searchLower)) ||
-      (user.email && user.email.toLowerCase().includes(searchLower))
-    );
-  });
-
-  // ================= GET INITIALS =================
-  const getInitials = (username, email) => {
-  if (username) return username.substring(0, 2).toUpperCase();
-    if (email) return email.substring(0, 2).toUpperCase();
-    return "U";
-  };
-
-  const currentUserAvatar = currentUser?.avatar || null;
 
   return (
     <>
@@ -108,76 +296,61 @@ const Dashboard = () => {
         <title>Dashboard - ChatApp</title>
       </Helmet>
 
-      <div className="h-screen flex flex-col bg-white font-sans">
+      <div className="h-screen flex flex-col bg-white">
 
-        {/* ================= HEADER ================= */}
-        <header className="w-full bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between shadow-sm">
+        {/* HEADER */}
 
-          {/* Logo */}
-          <div className="flex items-center space-x-3">
-            <div className="w-9 h-9 bg-gradient-to-br from-blue-500 to-teal-500 rounded-lg flex items-center justify-center shadow">
-              <MessageCircle className="w-5 h-5 text-white" />
-            </div>
-            <span className="text-xl font-bold bg-gradient-to-r from-blue-700 to-teal-700 bg-clip-text text-transparent">
-              ChatApp
-            </span>
+        <header className="flex justify-between border-b px-6 py-4">
+
+          <div className="flex items-center gap-2">
+            <MessageCircle className="w-6 h-6 text-blue-600" />
+            <span className="font-bold text-lg">ChatApp</span>
           </div>
 
-          {/* Profile */}
-          <div className="relative">
+          <div className="flex items-center gap-4">
+
             <button
-              onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
-              className="flex items-center space-x-2 hover:bg-gray-100 px-2 py-1 rounded-full"
+              onClick={() => setShowProfileModal(true)}
+              className="flex items-center gap-2 text-gray-600"
             >
-              <Avatar className="h-9 w-9 border border-gray-300">
-                <AvatarImage src={currentUserAvatar} />
-                <AvatarFallback className="bg-blue-100 text-blue-700 text-xs font-bold">
-                  {getInitials(currentUser?.name, currentUser?.email)}
-                </AvatarFallback>
-              </Avatar>
-              <ChevronDown className="w-4 h-4 text-gray-500" />
+              <User className="w-4 h-4" />
+              Edit Profile
             </button>
 
-            {isProfileMenuOpen && (
-              <>
-                <div
-                  className="fixed inset-0"
-                  onClick={() => setIsProfileMenuOpen(false)}
-                ></div>
+            <button
+              onClick={handleLogout}
+              className="text-red-500 flex items-center gap-2"
+            >
+              <LogOut className="w-4 h-4" />
+              Logout
+            </button>
 
-                <div className="absolute right-0 mt-2 w-52 bg-white rounded-xl shadow-lg border border-gray-100 py-2 z-50">
-                  <div className="px-4 py-2 border-b">
-                    <p className="text-sm font-medium truncate">
-                      {currentUser?.username || "User"}
-                    </p>
-                    <p className="text-xs text-gray-500 truncate">
-                      {currentUser?.email}
-                    </p>
-                  </div>
-
-                  <button
-                    onClick={handleLogout}
-                    className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center"
-                  >
-                    <LogOut className="w-4 h-4 mr-2" />
-                    Logout
-                  </button>
-                </div>
-              </>
-            )}
           </div>
+
         </header>
 
-        {/* ================= MAIN ================= */}
+        {/* MAIN */}
+
         <div className="flex flex-1 overflow-hidden">
 
-          {/* Sidebar */}
-          <div className="w-[320px] border-r border-gray-200 flex flex-col bg-white">
+          {/* SIDEBAR */}
 
-            {/* Search */}
-            <div className="p-4 border-b">
+          <div className="w-[320px] border-r flex flex-col">
+
+            <div className="p-4 space-y-3">
+
+              <button
+                onClick={() => navigate("/create-group")}
+                className="w-full flex items-center justify-center gap-2 bg-blue-600 text-white py-2 rounded-lg"
+              >
+                <Users className="w-4 h-4" />
+                Create Group Chat
+              </button>
+
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
+
+                <Search className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
+
                 <input
                   type="text"
                   placeholder="Search users..."
@@ -185,47 +358,143 @@ const Dashboard = () => {
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="w-full pl-9 pr-4 py-2 bg-gray-100 rounded-xl text-sm"
                 />
+
               </div>
 
-              <Button
-                variant="outline"
-                className="w-full mt-3 border-dashed border-2 rounded-xl"
-              >
-                <Users className="w-4 h-4 mr-2" />
-                Create Group Chat
-              </Button>
             </div>
 
-            {/* Users List */}
-            <div className="flex-1 overflow-y-auto">
-              {loadingUsers ? (
-                <div className="flex justify-center items-center h-32">
-                  <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-                </div>
-              ) : (
-                filteredUsers.map((user) => (
-                  <UserListItem
-                    key={user.id}
-                    user={user}
-                    isSelected={selectedUser?.id === user.id}
-                    onClick={(u) => setSelectedUser(u)}
-                  />
-                ))
-              )}
+            <div className="px-4 text-xs text-gray-500 font-semibold mt-2 mb-2">
+              DIRECT MESSAGES
             </div>
+
+            <div className="flex-1 overflow-y-auto">
+
+              {!searchQuery && chatrooms.map((room) => (
+
+                <div
+                  key={room.chatroom_name}
+                  onClick={() =>
+                    startChat({
+                      username: room.username,
+                      id: room.user_id,
+                    })
+                  }
+                  className="flex items-center gap-3 px-4 py-3 cursor-pointer border-b hover:bg-gray-100"
+                >
+
+                  <div className="w-10 h-10 rounded-full bg-blue-500 text-white flex items-center justify-center font-semibold">
+                    {room.username?.charAt(0).toUpperCase()}
+                  </div>
+
+                  <div className="flex-1">
+
+                    <span className="font-medium text-sm">
+                      {room.username}
+                    </span>
+
+                    <div className="text-xs text-gray-500">
+                      Tap to start chat
+                    </div>
+
+                  </div>
+
+                </div>
+
+              ))}
+
+              {searchQuery && users.map((user) => (
+                <UserListItem
+                  key={user.id}
+                  user={user}
+                  isSelected={selectedUser?.id === user.id}
+                  onClick={() => startChat(user)}
+                />
+              ))}
+
+            </div>
+
           </div>
 
-          {/* Chat Section */}
+          {/* CHAT AREA */}
+
           <div className="flex-1 flex flex-col">
+
             <ChatHeader
               selectedUser={selectedUser}
-              onBack={() => setSelectedUser(null)}
+              onlineCount={onlineCount}
+              onBack={() => {
+                setSelectedUser(null);
+                setMessages([]);
+                setCurrentChatroom(null);
+              }}
             />
-            <MessageArea selectedUser={selectedUser} />
-            <MessageInput selectedUser={selectedUser} />
+
+            <MessageArea
+              messages={messages}
+              currentUser={currentUser}
+            />
+
+            <MessageInput
+              selectedUser={selectedUser}
+              sendMessage={sendMessage}
+            />
+
           </div>
+
         </div>
+
       </div>
+
+      {/* PROFILE MODAL */}
+
+      {showProfileModal && (
+        <div className="fixed inset-0 bg-black/30 flex items-center justify-center">
+
+          <div className="bg-white rounded-xl p-6 w-[350px] space-y-4">
+
+            <h2 className="text-lg font-semibold">Edit Profile</h2>
+
+            <input
+              type="text"
+              value={profileData.username}
+              onChange={(e) =>
+                setProfileData({ ...profileData, username: e.target.value })
+              }
+              className="w-full border px-3 py-2 rounded"
+            />
+
+            <input
+              type="email"
+              value={profileData.email}
+              onChange={(e) =>
+                setProfileData({ ...profileData, email: e.target.value })
+              }
+              className="w-full border px-3 py-2 rounded"
+            />
+
+            <div className="flex justify-end gap-2">
+
+              <button
+                onClick={() => setShowProfileModal(false)}
+                className="px-3 py-2 text-gray-500"
+              >
+                Cancel
+              </button>
+
+              <button
+                onClick={updateProfile}
+                className="px-4 py-2 bg-blue-600 text-white rounded"
+              >
+                Save
+              </button>
+
+            </div>
+
+          </div>
+
+        </div>
+      )}
+
     </>
   );
 };

@@ -1,31 +1,78 @@
-import React from 'react';
-import { MessageCircle } from 'lucide-react';
+import React, { useEffect, useRef } from "react";
 
-const MessageArea = ({ selectedUser }) => {
-  if (!selectedUser) {
-    return (
-      <div className="flex-1 flex flex-col items-center justify-center bg-gray-50/50 p-6">
-        <div className="w-24 h-24 bg-gradient-to-br from-blue-100 to-teal-100 rounded-full flex items-center justify-center mb-6 shadow-inner">
-          <MessageCircle className="w-12 h-12 text-blue-500 opacity-80" />
-        </div>
-        <h3 className="text-2xl font-bold text-gray-800 mb-2">Welcome to ChatApp</h3>
-        <p className="text-gray-500 text-center max-w-md">
-          Select a chat from the sidebar to start messaging, or search for new users to connect with.
-        </p>
-      </div>
-    );
-  }
+const MessageArea = ({ messages, currentUser }) => {
+
+  const containerRef = useRef(null);
+  const bottomRef = useRef(null);
+
+  const formatTime = (time) => {
+    if (!time) return "";
+    const date = new Date(time);
+    return date.toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
+
+  useEffect(() => {
+
+    const container = containerRef.current;
+    if (!container) return;
+
+    // check user bottom par hai ya nahi
+    const isAtBottom =
+      container.scrollHeight - container.scrollTop - container.clientHeight < 100;
+
+    if (isAtBottom) {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+
+  }, [messages]);
 
   return (
-    <div className="flex-1 bg-[#f0f2f5] p-4 overflow-y-auto flex flex-col">
-      {/* Placeholder for actual messages */}
-      <div className="flex-1 flex items-center justify-center">
-        <div className="bg-white/80 backdrop-blur-sm px-6 py-3 rounded-full shadow-sm border border-gray-100">
-          <p className="text-sm text-gray-500 font-medium">
-            This is the beginning of your chat history with {selectedUser.name || selectedUser.email.split('@')[0]}
-          </p>
-        </div>
-      </div>
+    <div
+      ref={containerRef}
+      className="flex-1 overflow-y-auto p-4 bg-gray-50"
+    >
+
+      {messages.map((msg, index) => {
+
+        const isSender = msg.author === currentUser.username;
+
+        return (
+          <div
+            key={index}
+            className={`flex mb-3 ${isSender ? "justify-end" : "justify-start"}`}
+          >
+
+            <div
+              className={`max-w-[65%] px-4 py-2 rounded-xl shadow text-sm relative
+              ${
+                isSender
+                  ? "bg-green-500 text-white"
+                  : "bg-white text-black border border-gray-200"
+              }`}
+            >
+
+              <div>{msg.body}</div>
+
+              <div
+                className={`text-[10px] mt-1 ${
+                  isSender ? "text-green-100 text-right" : "text-gray-400"
+                }`}
+              >
+                {formatTime(msg.created_at)}
+              </div>
+
+            </div>
+
+          </div>
+        );
+
+      })}
+
+      <div ref={bottomRef}></div>
+
     </div>
   );
 };
